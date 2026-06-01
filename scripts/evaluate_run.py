@@ -7,7 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+from rapidfuzz import fuzz as _fuzz
 from scipy.stats import beta as _beta_dist
+from statsmodels.stats.contingency_tables import mcnemar as _mcnemar_test
 
 from twoprompt.config.experiment import (
     BASELINE_METHOD,
@@ -34,8 +36,9 @@ MODEL_ORDER = [
     "gpt-4.1-mini",
     "gemini-2.5-flash",
     "llama-3.1-8b-instant",
-    "Qwen/Qwen2.5-7B-Instruct",
     "Qwen/Qwen2.5-7B-Instruct-Turbo",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
 ]
 
 N_BOOTSTRAP = 10_000
@@ -94,6 +97,42 @@ def _bootstrap_ci_mean_abs_deviation(
         pred_count = ((pred_boot == k) & scored_boot).sum(axis=1)
         pred_pct = np.where(total_scored > 0, pred_count / total_scored * 100.0, 0.0)
         total_abs_dev += np.abs(pred_pct - gt_pct)
+
+    stats = np.where(total_scored > 0, total_abs_dev / len(OPTIONS), np.nan)
+    valid = stats[~np.isnan(stats)]
+    if len(valid) == 0:
+        return (float("nan"), float("nan"))
+    return float(np.percentile(valid, _CI_LO)), float(np.percentile(valid, _CI_HI))
+
+
+def _bootstrap_ci_bias_from_uniform(
+    group: pd.DataFrame, rng: np.random.Generator
+) -> tuple[float, float]:
+    """95% bootstrap CI for bias_from_uniform.
+
+    bias_from_uniform = mean over options of |p(opt) - 0.25|, where p(opt) is
+    the fraction of scored predictions that chose that option.  Resampling unit
+    is individual questions; scored-only filter is re-applied per resample.
+    """
+    n = len(group)
+    pred_enc = np.array(
+        [
+            _OPT_INDEX.get(v, -1) if isinstance(v, str) else -1
+            for v in group["parsed_choice"].values
+        ],
+        dtype=np.int8,
+    )
+
+    idx = rng.integers(0, n, size=(N_BOOTSTRAP, n))
+    pred_boot = pred_enc[idx]           # (N_BOOTSTRAP, n)
+    scored_boot = pred_boot >= 0        # (N_BOOTSTRAP, n)
+    total_scored = scored_boot.sum(axis=1).astype(float)  # (N_BOOTSTRAP,)
+
+    total_abs_dev = np.zeros(N_BOOTSTRAP)
+    for k in range(len(OPTIONS)):
+        pred_count = ((pred_boot == k) & scored_boot).sum(axis=1)
+        pred_prop = np.where(total_scored > 0, pred_count / total_scored, 0.0)
+        total_abs_dev += np.abs(pred_prop - 0.25)
 
     stats = np.where(total_scored > 0, total_abs_dev / len(OPTIONS), np.nan)
     valid = stats[~np.isnan(stats)]
@@ -433,6 +472,15 @@ def compute_positional_bias(df: pd.DataFrame) -> pd.DataFrame:
             row["mean_abs_deviation_ci_lower"] = mad_ci_lo
             row["mean_abs_deviation_ci_upper"] = mad_ci_hi
 
+            bfu = sum(
+                abs(pred_counts.get(opt, 0) / total_scored - 0.25) for opt in OPTIONS
+            ) / len(OPTIONS)
+            row["bias_from_uniform"] = bfu
+
+            bfu_ci_lo, bfu_ci_hi = _bootstrap_ci_bias_from_uniform(group, rng)
+            row["bias_from_uniform_ci_lower"] = bfu_ci_lo
+            row["bias_from_uniform_ci_upper"] = bfu_ci_hi
+
             rows.append(row)
 
     result = pd.DataFrame(rows)
@@ -488,6 +536,12 @@ def compute_overlap(df: pd.DataFrame) -> pd.DataFrame:
                 ((both_scored["bl_correct"] == False) & (both_scored["mt_correct"] == True)).sum()
             )
 
+            mcnemar_table = [[both_correct, bl_only], [mt_only, both_wrong]]
+            try:
+                mcnemar_p = float(_mcnemar_test(mcnemar_table, exact=False).pvalue)
+            except Exception:
+                mcnemar_p = float("nan")
+
             rows.append(
                 {
                     "model": model,
@@ -498,6 +552,7 @@ def compute_overlap(df: pd.DataFrame) -> pd.DataFrame:
                     "baseline_only_correct": bl_only,
                     "method_only_correct": mt_only,
                     "net_effect": mt_only - bl_only,
+                    "mcnemar_p": mcnemar_p,
                 }
             )
 
@@ -655,6 +710,79 @@ def compute_two_stage_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+# Free-text stage decomposition
+
+
+def compute_free_text_decomposition(df: pd.DataFrame) -> pd.DataFrame:
+    """2x2 pipeline decomposition for two_prompt rows.
+
+    For each two_prompt row, the free-text stage is judged correct if
+    token_sort_ratio(free_text_response, gold_option_text) is the highest
+    score across all four options AND that score >= 80.  The matching stage
+    result is taken from is_correct (NaN counts as matching-wrong).
+
+    Produces per-model counts:
+      ft_correct_match_correct  — pipeline worked at both stages
+      ft_correct_match_wrong    — free text had answer but matching lost it
+      ft_wrong_match_correct    — matching recovered despite weak free text
+      ft_wrong_match_wrong      — both stages failed
+    """
+    rows_out = []
+
+    tp_df = df[df["method_name"] == TWOPROMPT_METHOD].copy()
+    if tp_df.empty or "free_text_response" not in tp_df.columns:
+        return pd.DataFrame()
+
+    def _ft_correct(row: pd.Series) -> bool:
+        ft = row.get("free_text_response")
+        if not isinstance(ft, str) or not ft.strip():
+            return False
+        gold = row.get("correct_option")
+        choices = {
+            "A": row.get("choice_a", ""),
+            "B": row.get("choice_b", ""),
+            "C": row.get("choice_c", ""),
+            "D": row.get("choice_d", ""),
+        }
+        best_opt, best_score = None, -1.0
+        for opt, text in choices.items():
+            if not isinstance(text, str):
+                continue
+            score = _fuzz.token_sort_ratio(ft, text)
+            if score > best_score:
+                best_score, best_opt = score, opt
+        return best_opt == gold and best_score >= 80
+
+    tp_df["_ft_correct"] = tp_df.apply(_ft_correct, axis=1)
+    tp_df["_match_correct"] = tp_df["is_correct"].eq(True)
+
+    for model in MODEL_ORDER:
+        group = tp_df[tp_df["model_name"] == model]
+        if group.empty:
+            continue
+
+        ft_c = group["_ft_correct"]
+        mt_c = group["_match_correct"]
+
+        rows_out.append(
+            {
+                "model": model,
+                "n_total": len(group),
+                "n_ft_missing": int((~group["free_text_response"].notna()).sum()),
+                "ft_correct_match_correct": int((ft_c & mt_c).sum()),
+                "ft_correct_match_wrong": int((ft_c & ~mt_c).sum()),
+                "ft_wrong_match_correct": int((~ft_c & mt_c).sum()),
+                "ft_wrong_match_wrong": int((~ft_c & ~mt_c).sum()),
+            }
+        )
+
+    result = pd.DataFrame(rows_out)
+    if not result.empty:
+        result["model"] = pd.Categorical(result["model"], categories=MODEL_ORDER, ordered=True)
+        result = result.sort_values("model").reset_index(drop=True)
+    return result
+
+
 # Main
 
 
@@ -753,13 +881,22 @@ def main() -> None:
     print("\n[eval] Computing positional bias...")
     bias = compute_positional_bias(df)
     bias.to_csv(report_dir / "positional_bias.csv", index=False)
-    print(bias[["method", "model", "n_scored", "mean_abs_deviation", "mean_abs_deviation_ci_lower", "mean_abs_deviation_ci_upper"]].to_string(index=False))
+    bias_display_cols = [
+        "method", "model", "n_scored",
+        "bias_from_uniform", "bias_from_uniform_ci_lower", "bias_from_uniform_ci_upper",
+        "mean_abs_deviation", "mean_abs_deviation_ci_lower", "mean_abs_deviation_ci_upper",
+    ]
+    print(bias[[c for c in bias_display_cols if c in bias.columns]].to_string(index=False))
 
     print("\n[eval] Computing question-level overlap...")
     overlap = compute_overlap(df)
     overlap.to_csv(report_dir / "overlap.csv", index=False)
     if not overlap.empty:
-        print(overlap.to_string(index=False))
+        overlap_display_cols = [
+            "model", "method", "n_compared",
+            "baseline_only_correct", "method_only_correct", "net_effect", "mcnemar_p",
+        ]
+        print(overlap[[c for c in overlap_display_cols if c in overlap.columns]].to_string(index=False))
 
     print("\n[eval] Computing choice shifts...")
     shifts = compute_choice_shifts(df)
@@ -774,6 +911,14 @@ def main() -> None:
     if not two_stage.empty:
         two_stage.to_csv(report_dir / "two_stage_metrics.csv", index=False)
         print(two_stage.to_string(index=False))
+
+    print("\n[eval] Computing free-text stage decomposition...")
+    ft_decomp = compute_free_text_decomposition(df)
+    if not ft_decomp.empty:
+        ft_decomp.to_csv(report_dir / "free_text_decomposition.csv", index=False)
+        print(ft_decomp.to_string(index=False))
+    else:
+        print("[eval] No two_prompt rows with free_text_response found; skipping.")
 
     print(f"\n[complete] Reports saved to {report_dir}/")
 
