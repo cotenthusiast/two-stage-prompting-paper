@@ -1,5 +1,6 @@
 # tests/pipeline/test_prompt_builder.py
 
+import pytest
 from pathlib import Path
 
 from twoprompt.pipeline.prompt_builder import (
@@ -79,3 +80,43 @@ class TestBuildOptionMatchingPrompt:
         assert prompt.index("B. two") < prompt.index("C. three")
         assert prompt.index("C. three") < prompt.index("D. four")
         assert free_response in prompt
+
+
+class TestLoadPromptTemplates:
+    """Tests for load_prompt_templates version isolation."""
+
+    def test_v1_loads_original_stage1(self):
+        t = load_prompt_templates("v1", _PROMPTS_DIR)
+        assert "Respond with a short direct answer only." in t["free_text"]
+
+    def test_v1_loads_original_stage2(self):
+        t = load_prompt_templates("v1", _PROMPTS_DIR)
+        assert "Select the option that best matches the reference answer" in t["option_matching"]
+        assert "Respond with only the letter." in t["option_matching"]
+
+    def test_v2_changes_only_stage1(self):
+        v1 = load_prompt_templates("v1", _PROMPTS_DIR)
+        v2 = load_prompt_templates("v2", _PROMPTS_DIR)
+        # Stage 1 must differ
+        assert v2["free_text"] != v1["free_text"]
+        assert "concise answer phrase" in v2["free_text"]
+        # Stage 2 must be identical to v1
+        assert v2["option_matching"] == v1["option_matching"]
+        # direct_mcq must be identical to v1
+        assert v2["direct_mcq"] == v1["direct_mcq"]
+
+    def test_v3_changes_only_stage2(self):
+        v1 = load_prompt_templates("v1", _PROMPTS_DIR)
+        v3 = load_prompt_templates("v3", _PROMPTS_DIR)
+        # Stage 2 must differ
+        assert v3["option_matching"] != v1["option_matching"]
+        assert "Prioritize meaning over exact wording." in v3["option_matching"]
+        assert "Respond with only A, B, C, or D." in v3["option_matching"]
+        # Stage 1 must be identical to v1
+        assert v3["free_text"] == v1["free_text"]
+        # direct_mcq must be identical to v1
+        assert v3["direct_mcq"] == v1["direct_mcq"]
+
+    def test_unknown_version_raises_file_not_found(self):
+        with pytest.raises(FileNotFoundError, match="v99"):
+            load_prompt_templates("v99", _PROMPTS_DIR)
