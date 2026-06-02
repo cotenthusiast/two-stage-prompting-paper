@@ -171,6 +171,7 @@ def reparse_run(df: pd.DataFrame) -> pd.DataFrame:
         (df["model_status"].fillna("") != "failure")
         & (df["parse_reason"].fillna("") != "majority_vote")
         & (df["method_name"] != PRIDE_METHOD)
+        & df["raw_text"].notna()
     )
 
     parsed_choices = []
