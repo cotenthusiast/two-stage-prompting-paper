@@ -34,6 +34,7 @@ data/reviews/*
 # Run outputs
 runs/*
 !runs/.gitkeep
+runs_local_models/
 
 # Checkpoints
 checkpoints/
