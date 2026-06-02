@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml",
     "rapidfuzz",
     "statsmodels",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
