@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-_TEMPLATE_NAMES = ("direct_mcq", "free_text", "option_matching")
+_TEMPLATE_NAMES = ("direct_mcq", "free_text", "option_matching", "text_extraction")
 
 
 def load_prompt_templates(version: str, prompts_dir: Path) -> dict[str, str]:
@@ -88,6 +88,40 @@ def build_free_text_prompt(template: str, question: str) -> str:
         Fully formatted prompt string.
     """
     return template.format(question=question)
+
+
+def build_text_extraction_prompt(
+    template: str,
+    question: str,
+    option_a: str,
+    option_b: str,
+    option_c: str,
+    option_d: str,
+) -> str:
+    """Format the text-extraction template with question and options.
+
+    Unlike direct MCQ, the model is instructed to output the answer text
+    rather than a letter. The options are shown for context so the model
+    can calibrate its response to match an option exactly.
+
+    Args:
+        template: Raw template string from load_prompt_templates.
+        question: Question stem to present to the model.
+        option_a: Text of answer option A.
+        option_b: Text of answer option B.
+        option_c: Text of answer option C.
+        option_d: Text of answer option D.
+
+    Returns:
+        Fully formatted prompt string.
+    """
+    return template.format(
+        question=question,
+        option_a=option_a,
+        option_b=option_b,
+        option_c=option_c,
+        option_d=option_d,
+    )
 
 
 def build_option_matching_prompt(
