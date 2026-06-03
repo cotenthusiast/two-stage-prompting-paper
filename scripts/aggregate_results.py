@@ -16,6 +16,8 @@ METHOD_ORDER = [
     "two_prompt",
     "cyclic",
     "pride",
+    "text_extraction",
+    "twostage_semantic_match",
 ]
 
 MODEL_ORDER = [
@@ -41,6 +43,8 @@ METHOD_DISPLAY = {
     "two_prompt": "Two-Stage",
     "cyclic": "Cyclic Perm.",
     "pride": "PriDe",
+    "text_extraction": "Text Extraction",
+    "twostage_semantic_match": "Two-Stage (Sem. Match)",
 }
 
 

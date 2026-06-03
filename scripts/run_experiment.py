@@ -34,6 +34,7 @@ from twoprompt.io.writers import write_run_results
 from twoprompt.runners.direct_mcq import DirectMCQRunner
 from twoprompt.runners.permutation import PermutationRunner
 from twoprompt.runners.pride import PriDeRunner
+from twoprompt.runners.text_extraction import TextExtractionRunner
 from twoprompt.runners.two_stage import TwoStageRunner
 from twoprompt.runners.two_stage_permutation import TwoStagePermutationRunner
 
@@ -55,6 +56,7 @@ _METHOD_TO_RUNNER = {
     "two_prompt": TwoStageRunner,
     "cyclic": PermutationRunner,
     "pride": PriDeRunner,
+    "text_extraction": TextExtractionRunner,
 }
 
 # API calls per question for each method (used for preflight estimates).
@@ -64,6 +66,7 @@ _CALLS_PER_QUESTION = {
     "two_prompt": 2,       # stage 1 free-text + stage 2 matching
     "cyclic": 4,           # 4 cyclic permutations
     "pride": 1,
+    "text_extraction": 1,  # 1 call; matching is deterministic post-processing
 }
 
 # Approximate avg tokens per API call (very rough; for cost estimates only).

@@ -18,6 +18,7 @@ dependencies = [
     "rapidfuzz",
     "statsmodels",
     "matplotlib",
+    "sentence-transformers",
 ]
 
 [project.optional-dependencies]

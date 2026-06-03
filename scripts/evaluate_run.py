@@ -14,6 +14,8 @@ from statsmodels.stats.contingency_tables import mcnemar as _mcnemar_test
 from twoprompt.config.experiment import (
     BASELINE_METHOD,
     PRIDE_METHOD,
+    SEMANTIC_MATCH_METHOD,
+    TEXT_EXTRACTION_METHOD,
     TWOPROMPT_METHOD,
     TWOPROMPT_CYCLIC_METHOD,
 )
@@ -30,6 +32,8 @@ METHOD_ORDER = [
     "two_prompt",
     "cyclic",
     "pride",
+    "text_extraction",
+    "twostage_semantic_match",
 ]
 
 MODEL_ORDER = [
@@ -171,6 +175,8 @@ def reparse_run(df: pd.DataFrame) -> pd.DataFrame:
         (df["model_status"].fillna("") != "failure")
         & (df["parse_reason"].fillna("") != "majority_vote")
         & (df["method_name"] != PRIDE_METHOD)
+        & (df["method_name"] != TEXT_EXTRACTION_METHOD)
+        & (df["method_name"] != SEMANTIC_MATCH_METHOD)
         & df["raw_text"].notna()
     )
 

@@ -10,12 +10,16 @@ TWOPROMPT_METHOD = "two_prompt"
 CYCLIC_METHOD = "cyclic"
 TWOPROMPT_CYCLIC_METHOD = "two_prompt_cyclic"
 PRIDE_METHOD = "pride"
+TEXT_EXTRACTION_METHOD = "text_extraction"
+SEMANTIC_MATCH_METHOD = "twostage_semantic_match"
 
 ALL_METHODS = [
     BASELINE_METHOD,
     TWOPROMPT_METHOD,
     CYCLIC_METHOD,
     PRIDE_METHOD,
+    TEXT_EXTRACTION_METHOD,
+    SEMANTIC_MATCH_METHOD,
 ]
 
 # Track A: robustness / accuracy ------------------------
