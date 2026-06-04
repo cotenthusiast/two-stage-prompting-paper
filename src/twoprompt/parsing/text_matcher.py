@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import string
 from typing import NamedTuple
 
@@ -38,7 +39,13 @@ class TextMatchResult(NamedTuple):
     scores_by_option: dict[str, float]
 
 
-def _normalize(text: str) -> str:
+def _normalize(text) -> str:
+    if text is None:
+        return ""
+    if isinstance(text, float) and math.isnan(text):
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
     text = text.lower().strip()
     text = text.translate(str.maketrans("", "", string.punctuation))
     return " ".join(text.split())
@@ -71,7 +78,7 @@ def match_text_to_options(
         TextMatchResult(label, option_text, score, scores_by_option).
         label is None when nothing clears the threshold.
     """
-    if not answer_text or not answer_text.strip():
+    if not isinstance(answer_text, str) or not answer_text.strip():
         return TextMatchResult(
             label=None,
             option_text=None,
@@ -114,7 +121,7 @@ def match_text_to_options(
     # 3. Semantic similarity
     model = _get_embed_model()
     letters = list(options.keys())
-    texts = [answer_text] + [options[l] for l in letters]
+    texts = [answer_text] + [options[l] if isinstance(options[l], str) else "" for l in letters]
     embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
     answer_emb = embeddings[0]

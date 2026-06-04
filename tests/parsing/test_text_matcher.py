@@ -1,8 +1,10 @@
 # tests/parsing/test_text_matcher.py
 
+import math
+
 import pytest
 
-from twoprompt.parsing.text_matcher import match_text_to_options, parse_result_from_text_match
+from twoprompt.parsing.text_matcher import _normalize, match_text_to_options, parse_result_from_text_match
 from twoprompt.parsing.types import PARSE_OK, PARSE_MISSING
 
 _OPTIONS = {
@@ -18,6 +20,26 @@ _OPTIONS_LONG = {
     "C": "Ribosome",
     "D": "Cell membrane",
 }
+
+
+class TestNormalize:
+    def test_normal_string(self):
+        assert _normalize("HTTPS.") == "https"
+
+    def test_none_returns_empty(self):
+        assert _normalize(None) == ""
+
+    def test_float_nan_returns_empty(self):
+        assert _normalize(float("nan")) == ""
+
+    def test_pandas_nan_float_returns_empty(self):
+        # pandas reads missing CSV cells as float("nan") in object columns
+        import pandas as pd
+        nan_val = pd.Series(["a", None]).iloc[1]  # float nan from pandas
+        assert _normalize(nan_val) == ""
+
+    def test_non_string_non_nan_coerced(self):
+        assert _normalize(42) == "42"
 
 
 class TestMatchTextToOptions:
@@ -58,6 +80,29 @@ class TestMatchTextToOptions:
     def test_scores_by_option_always_present(self):
         result = match_text_to_options("HTTPS", _OPTIONS)
         assert set(result.scores_by_option.keys()) == {"A", "B", "C", "D"}
+
+    def test_nan_answer_does_not_crash(self):
+        result = match_text_to_options(float("nan"), _OPTIONS)
+        assert result.label is None
+
+    def test_none_answer_does_not_crash(self):
+        result = match_text_to_options(None, _OPTIONS)
+        assert result.label is None
+
+    def test_nan_option_text_does_not_crash(self):
+        options_with_nan = {
+            "A": float("nan"),
+            "B": "HTTP",
+            "C": "HTTPS",
+            "D": "SMTP",
+        }
+        result = match_text_to_options("HTTPS", options_with_nan)
+        assert result.label == "C"
+
+    def test_all_nan_options_does_not_crash(self):
+        all_nan = {k: float("nan") for k in "ABCD"}
+        result = match_text_to_options("HTTPS", all_nan)
+        assert result.label is None
 
 
 class TestParseResultFromTextMatch:
