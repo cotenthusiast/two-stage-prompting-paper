@@ -1,0 +1,3 @@
+paths:
+  runs_dir: paper_results/eval_ready
+  reports_dir: paper_results/reports

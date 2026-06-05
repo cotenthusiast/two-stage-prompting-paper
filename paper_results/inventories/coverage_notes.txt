@@ -1,0 +1,79 @@
+PAPER RESULTS COVERAGE NOTES
+Generated: 2026-06-04
+===============================================================================
+
+COVERAGE TABLE
+  P = present in eval_ready/
+  M = missing
+  D = conflict / duplicate source in same folder
+  — = not expected / not applicable
+
+Key:
+  baseline            = direct MCQ v1
+  cyclic              = cyclic permutation v1
+  pride               = PriDe logprob debiasing (logprob-only)
+  two_prompt          = two-stage v1
+  text_extraction     = text_extraction v1
+  twostage_sm         = twostage_semantic_match v1
+  two_prompt_v2       = two-stage, Stage-1 prompt ablation (v2 free_text)
+  twostage_sm_v2      = twostage_semantic_match + v2 free_text
+  two_prompt_v3       = two-stage, Stage-2 prompt ablation (v3 option_matching)
+
+Model                                      BM              baseline  cyclic  pride  two_pr  text_ex  tsm_v1  tp_v2  tsm_v2  tp_v3
+----------------------------------------------------------------------------------------------------------------------------------
+gpt-4.1-mini                               mmlu                   P       P      —       P        P       P      P       P      P
+gpt-4.1-mini                               arc_challenge          P       P      —       P        P       P      P       P      P
+gemini-2.5-flash                           mmlu                   P       P      —       P        P       P      P       P      P
+gemini-2.5-flash                           arc_challenge          P       P      —       P        P       P      P       P      P
+llama-3.1-8b-instant                       mmlu                   P       P      —       P        P       P      P       P      P
+llama-3.1-8b-instant                       arc_challenge          P       P      —       P        P       P      P       P      P
+Qwen/Qwen2.5-7B-Instruct-Turbo             mmlu                   P       P      P       P        P       P      P       P      P
+Qwen/Qwen2.5-7B-Instruct-Turbo             arc_challenge          P       P      P       P        P       P      P       P      P
+Qwen/Qwen2.5-7B-Instruct                   mmlu                   P       P      P       P        P       P      P       P      P
+Qwen/Qwen2.5-7B-Instruct                   arc_challenge          P       P      P       P        P       P      P       P      P
+meta-llama/Llama-3.1-8B-Instruct           mmlu                   P       P      P       P        P       P      P       P      P
+meta-llama/Llama-3.1-8B-Instruct           arc_challenge          P       P      P       P        P       P      P       P      P
+
+===============================================================================
+GENUINE GAPS (data does not exist, not just absent from this folder):
+
+1. pride for gpt-4.1-mini / gemini-2.5-flash / llama-3.1-8b-instant
+   Reason: these providers do not expose per-token logprobs in the format
+   required by PriDe.  Marked — (not expected).
+
+2. twostage_semantic_match_v3
+   Reason: Stage-2 ablation (v3 option_matching prompt) was run for
+   two_prompt only; a matching twostage_semantic_match_v3 was never produced
+   for any model or benchmark.  Would require a new Kelvin2 run.
+
+===============================================================================
+EVAL_READY FOLDER MAP:
+
+  paper_api_main/             API models (4), v1, all 6 core methods, both BMs   (42 CSVs)
+  paper_local_main/           Local models (2), v1, all 6 core methods, both BMs (24 CSVs)
+  paper_combined_main/        All 6 models, v1, all 6 core methods, both BMs     (66 CSVs)
+  paper_api_ablation_v2/      API models, method_name renamed -> *_v2            (16 CSVs)
+  paper_local_ablation_v2/    Local models, method_name renamed -> *_v2          ( 8 CSVs)
+  paper_api_ablation_v3/      API models, method_name renamed -> two_prompt_v3   ( 8 CSVs)
+  paper_local_ablation_v3/    Local models, method_name renamed -> two_prompt_v3 ( 4 CSVs)
+
+NOTE: eval_ready CSVs have method_name rewritten ONLY for ablation folders.
+      All other columns are identical to the source CSVs.
+
+===============================================================================
+DATA SOURCE MAP:
+
+SOURCE                 DEST FOLDER(S)                   NOTES
+--------------------------------------------------------------------
+runs/20260601_183346   paper_api_main, combined_main     v1 API: baseline/cyclic/pride/two_prompt/tsm
+runs/20260603_154649   paper_api_main, combined_main     v1 API: text_extraction
+runs/20260603_105547   paper_api_ablation_v2             v2 API: two_prompt→tp_v2, tsm→tsm_v2
+runs/20260603_134908   paper_api_ablation_v3             v3 API: two_prompt→tp_v3
+zip/20260529_144439    paper_local_main, combined_main   v1 Qwen-7B: baseline
+zip/20260529_145812    paper_local_main, combined_main   v1 Qwen-7B: cyclic/pride/tp/tsm
+zip/20260529_180747    paper_local_main, combined_main   v1 llama-8B: baseline+mmlu methods
+zip/20260529_180748    paper_local_main, combined_main   v1 llama-8B: arc methods
+zip/20260603_213613    paper_local_main, combined_main   v1 Qwen-7B: text_extraction
+zip/20260603_214857    paper_local_main, combined_main   v1 llama-8B: text_extraction
+zip/2026060[2-3]_*v2   paper_local_ablation_v2          v2 local: tp→tp_v2, tsm→tsm_v2
+zip/2026060[2-3]_*v3   paper_local_ablation_v3          v3 local: tp→tp_v3

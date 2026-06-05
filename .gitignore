@@ -35,12 +35,20 @@ data/reviews/*
 runs/*
 !runs/.gitkeep
 runs_local_models/
+runs_two_stage_paper.zip
 
 # Checkpoints
 checkpoints/
 
-# Report outputs
+# Report outputs (default paths)
 reports/
+
+# paper_results: ignore generated data/outputs, keep config and inventories
+paper_results/eval_ready/
+paper_results/raw_imports/
+paper_results/organized/
+paper_results/reports/
+paper_results/reports_fallback/
 
 # Logs
 logs/*
