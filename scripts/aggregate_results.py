@@ -14,10 +14,13 @@ _ROOT = Path(__file__).resolve().parents[1]
 METHOD_ORDER = [
     "baseline",
     "two_prompt",
+    "two_prompt_v2",
+    "two_prompt_v3",
     "cyclic",
     "pride",
     "text_extraction",
     "twostage_semantic_match",
+    "twostage_semantic_match_v2",
 ]
 
 MODEL_ORDER = [
@@ -41,10 +44,13 @@ MODEL_DISPLAY = {
 METHOD_DISPLAY = {
     "baseline": "Baseline",
     "two_prompt": "Two-Stage",
+    "two_prompt_v2": "Two-Stage v2",
+    "two_prompt_v3": "Two-Stage v3",
     "cyclic": "Cyclic Perm.",
     "pride": "PriDe",
     "text_extraction": "Text Extraction",
     "twostage_semantic_match": "Two-Stage (Sem. Match)",
+    "twostage_semantic_match_v2": "Sem. Match v2",
 }
 
 
