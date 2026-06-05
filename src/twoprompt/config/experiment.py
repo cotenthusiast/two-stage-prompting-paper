@@ -7,20 +7,35 @@ MMLU_QUESTIONS_PER_SUBJECT = 50
 # Shared method names -----------------------------------
 BASELINE_METHOD = "baseline"
 TWOPROMPT_METHOD = "two_prompt"
+TWOPROMPT_V2_METHOD = "two_prompt_v2"
+TWOPROMPT_V3_METHOD = "two_prompt_v3"
 CYCLIC_METHOD = "cyclic"
 TWOPROMPT_CYCLIC_METHOD = "two_prompt_cyclic"
 PRIDE_METHOD = "pride"
 TEXT_EXTRACTION_METHOD = "text_extraction"
 SEMANTIC_MATCH_METHOD = "twostage_semantic_match"
+SEMANTIC_MATCH_V2_METHOD = "twostage_semantic_match_v2"
 
 ALL_METHODS = [
     BASELINE_METHOD,
     TWOPROMPT_METHOD,
+    TWOPROMPT_V2_METHOD,
+    TWOPROMPT_V3_METHOD,
     CYCLIC_METHOD,
     PRIDE_METHOD,
     TEXT_EXTRACTION_METHOD,
     SEMANTIC_MATCH_METHOD,
+    SEMANTIC_MATCH_V2_METHOD,
 ]
+
+# Methods whose scores are computed outside the standard parse_model_answer path
+# and must never be reparsed by the evaluator.
+EXTERNALLY_SCORED_METHODS: frozenset[str] = frozenset({
+    PRIDE_METHOD,
+    TEXT_EXTRACTION_METHOD,
+    SEMANTIC_MATCH_METHOD,
+    SEMANTIC_MATCH_V2_METHOD,
+})
 
 # Track A: robustness / accuracy ------------------------
 ROBUSTNESS_TRACK_NAME = "robustness"

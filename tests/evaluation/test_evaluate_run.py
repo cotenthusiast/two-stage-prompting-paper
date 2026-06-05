@@ -1,6 +1,7 @@
 # tests/evaluation/test_evaluate_run.py
 #
-# Tests for the post-hoc baseline fallback logic in scripts/evaluate_run.py.
+# Tests for evaluate_run.py: METHOD_ORDER coverage, EXTERNALLY_SCORED_METHODS,
+# reparse_run exclusions, and baseline fallback logic.
 # The script lives outside the twoprompt package, so we load it via importlib.
 
 import importlib.util
@@ -18,6 +19,8 @@ _spec.loader.exec_module(_evaluate_run)
 
 apply_baseline_fallback = _evaluate_run.apply_baseline_fallback
 compute_accuracy = _evaluate_run.compute_accuracy
+reparse_run = _evaluate_run.reparse_run
+METHOD_ORDER = _evaluate_run.METHOD_ORDER
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +244,93 @@ class TestComputeAccuracyFallbackCount:
         accuracy = compute_accuracy(df_after)
         bl = accuracy[accuracy["method"] == "baseline"]
         assert (bl["fallback_count"] == 0).all()
+
+
+# ---------------------------------------------------------------------------
+# METHOD_ORDER coverage — v2/v3 ablation method names
+# ---------------------------------------------------------------------------
+
+
+class TestMethodOrder:
+    def test_two_prompt_v2_in_method_order(self):
+        assert "two_prompt_v2" in METHOD_ORDER
+
+    def test_two_prompt_v3_in_method_order(self):
+        assert "two_prompt_v3" in METHOD_ORDER
+
+    def test_twostage_semantic_match_v2_in_method_order(self):
+        assert "twostage_semantic_match_v2" in METHOD_ORDER
+
+    def test_core_methods_still_present(self):
+        for m in ("baseline", "two_prompt", "cyclic", "pride", "text_extraction", "twostage_semantic_match"):
+            assert m in METHOD_ORDER, f"{m!r} missing from METHOD_ORDER"
+
+    def test_method_order_has_no_duplicates(self):
+        assert len(METHOD_ORDER) == len(set(METHOD_ORDER))
+
+
+# ---------------------------------------------------------------------------
+# reparse_run — externally scored methods must not be reparsed
+# ---------------------------------------------------------------------------
+
+
+def _reparsable_df(method_name: str) -> pd.DataFrame:
+    """Minimal DataFrame for testing reparse_run exclusions."""
+    return pd.DataFrame([{
+        "question_id": "q1",
+        "method_name": method_name,
+        "model_name": "gpt-4.1-mini",
+        "model_status": "success",
+        "parse_reason": "initial",
+        "raw_text": "The answer is A.",
+        "parsed_choice": None,
+        "parse_status": None,
+        "normalized_text": None,
+        "is_correct": None,
+        "score_status": None,
+        "correct_option": "A",
+        "choice_a": "alpha",
+        "choice_b": "beta",
+        "choice_c": "gamma",
+        "choice_d": "delta",
+    }])
+
+
+class TestReparseRunExclusions:
+    def test_twostage_semantic_match_v2_not_reparsed(self):
+        df = _reparsable_df("twostage_semantic_match_v2")
+        result = reparse_run(df)
+        # parsed_choice should remain None — row was not reparsed
+        assert result.iloc[0]["parsed_choice"] is None or pd.isna(result.iloc[0]["parsed_choice"])
+
+    def test_twostage_semantic_match_not_reparsed(self):
+        df = _reparsable_df("twostage_semantic_match")
+        result = reparse_run(df)
+        assert result.iloc[0]["parsed_choice"] is None or pd.isna(result.iloc[0]["parsed_choice"])
+
+    def test_pride_not_reparsed(self):
+        df = _reparsable_df("pride")
+        result = reparse_run(df)
+        assert result.iloc[0]["parsed_choice"] is None or pd.isna(result.iloc[0]["parsed_choice"])
+
+    def test_text_extraction_not_reparsed(self):
+        df = _reparsable_df("text_extraction")
+        result = reparse_run(df)
+        assert result.iloc[0]["parsed_choice"] is None or pd.isna(result.iloc[0]["parsed_choice"])
+
+    def test_two_prompt_is_reparsed(self):
+        """two_prompt is not externally scored — it should go through reparse_run."""
+        df = _reparsable_df("two_prompt")
+        result = reparse_run(df)
+        # "The answer is A." should parse to A
+        assert result.iloc[0]["parsed_choice"] == "A"
+
+    def test_two_prompt_v2_is_reparsed(self):
+        df = _reparsable_df("two_prompt_v2")
+        result = reparse_run(df)
+        assert result.iloc[0]["parsed_choice"] == "A"
+
+    def test_two_prompt_v3_is_reparsed(self):
+        df = _reparsable_df("two_prompt_v3")
+        result = reparse_run(df)
+        assert result.iloc[0]["parsed_choice"] == "A"

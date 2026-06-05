@@ -13,11 +13,16 @@ from statsmodels.stats.contingency_tables import mcnemar as _mcnemar_test
 
 from twoprompt.config.experiment import (
     BASELINE_METHOD,
+    CYCLIC_METHOD,
+    EXTERNALLY_SCORED_METHODS,
     PRIDE_METHOD,
     SEMANTIC_MATCH_METHOD,
+    SEMANTIC_MATCH_V2_METHOD,
     TEXT_EXTRACTION_METHOD,
     TWOPROMPT_METHOD,
     TWOPROMPT_CYCLIC_METHOD,
+    TWOPROMPT_V2_METHOD,
+    TWOPROMPT_V3_METHOD,
 )
 from twoprompt.config.paths import REPORTS_DIR, RUNS_DIR
 from twoprompt.parsing.parser import parse_model_answer
@@ -28,12 +33,15 @@ _ROOT = Path(__file__).resolve().parents[1]
 OPTIONS = ["A", "B", "C", "D"]
 
 METHOD_ORDER = [
-    "baseline",
-    "two_prompt",
-    "cyclic",
-    "pride",
-    "text_extraction",
-    "twostage_semantic_match",
+    BASELINE_METHOD,
+    TWOPROMPT_METHOD,
+    TWOPROMPT_V2_METHOD,
+    TWOPROMPT_V3_METHOD,
+    CYCLIC_METHOD,
+    PRIDE_METHOD,
+    TEXT_EXTRACTION_METHOD,
+    SEMANTIC_MATCH_METHOD,
+    SEMANTIC_MATCH_V2_METHOD,
 ]
 
 MODEL_ORDER = [
@@ -174,9 +182,7 @@ def reparse_run(df: pd.DataFrame) -> pd.DataFrame:
     reparsable_mask = (
         (df["model_status"].fillna("") != "failure")
         & (df["parse_reason"].fillna("") != "majority_vote")
-        & (df["method_name"] != PRIDE_METHOD)
-        & (df["method_name"] != TEXT_EXTRACTION_METHOD)
-        & (df["method_name"] != SEMANTIC_MATCH_METHOD)
+        & (~df["method_name"].isin(EXTERNALLY_SCORED_METHODS))
         & df["raw_text"].notna()
     )
 
@@ -216,6 +222,17 @@ def reparse_run(df: pd.DataFrame) -> pd.DataFrame:
 
 
 _FALLBACK_METHODS = {TWOPROMPT_METHOD, TWOPROMPT_CYCLIC_METHOD}
+
+# All methods that run a free-text Stage 1 and store free_text_response.
+# Used by compute_two_stage_metrics and compute_free_text_decomposition.
+_FREE_TEXT_STAGE_METHODS: frozenset[str] = frozenset({
+    TWOPROMPT_METHOD,
+    TWOPROMPT_CYCLIC_METHOD,
+    TWOPROMPT_V2_METHOD,
+    TWOPROMPT_V3_METHOD,
+    SEMANTIC_MATCH_METHOD,
+    SEMANTIC_MATCH_V2_METHOD,
+})
 
 
 def apply_baseline_fallback(df: pd.DataFrame) -> pd.DataFrame:
@@ -668,13 +685,12 @@ def compute_subject_accuracy(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_two_stage_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    """Metrics specific to two-stage methods."""
+    """Metrics specific to two-stage methods (all variants with a free-text stage)."""
     rows = []
-    two_stage_methods = [TWOPROMPT_METHOD, TWOPROMPT_CYCLIC_METHOD]
 
     for method in METHOD_ORDER:
         for model in MODEL_ORDER:
-            if method not in two_stage_methods:
+            if method not in _FREE_TEXT_STAGE_METHODS:
                 continue
 
             group = df[(df["method_name"] == method) & (df["model_name"] == model)]
@@ -721,14 +737,13 @@ def compute_two_stage_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_free_text_decomposition(df: pd.DataFrame) -> pd.DataFrame:
-    """2x2 pipeline decomposition for two_prompt rows.
+    """2x2 pipeline decomposition for all two-stage methods (all prompt variants).
 
-    For each two_prompt row, the free-text stage is judged correct if
-    token_sort_ratio(free_text_response, gold_option_text) is the highest
-    score across all four options AND that score >= 80.  The matching stage
-    result is taken from is_correct (NaN counts as matching-wrong).
+    The free-text stage is judged correct if token_sort_ratio(free_text_response,
+    gold_option_text) is the highest score across all four options AND >= 80.
+    The matching stage result is taken from is_correct (NaN counts as wrong).
 
-    Produces per-model counts:
+    Produces per-method × per-model counts:
       ft_correct_match_correct  — pipeline worked at both stages
       ft_correct_match_wrong    — free text had answer but matching lost it
       ft_wrong_match_correct    — matching recovered despite weak free text
@@ -736,7 +751,7 @@ def compute_free_text_decomposition(df: pd.DataFrame) -> pd.DataFrame:
     """
     rows_out = []
 
-    tp_df = df[df["method_name"] == TWOPROMPT_METHOD].copy()
+    tp_df = df[df["method_name"].isin(_FREE_TEXT_STAGE_METHODS)].copy()
     if tp_df.empty or "free_text_response" not in tp_df.columns:
         return pd.DataFrame()
 
@@ -763,30 +778,38 @@ def compute_free_text_decomposition(df: pd.DataFrame) -> pd.DataFrame:
     tp_df["_ft_correct"] = tp_df.apply(_ft_correct, axis=1)
     tp_df["_match_correct"] = tp_df["is_correct"].eq(True)
 
-    for model in MODEL_ORDER:
-        group = tp_df[tp_df["model_name"] == model]
-        if group.empty:
+    for method in METHOD_ORDER:
+        if method not in _FREE_TEXT_STAGE_METHODS:
+            continue
+        method_df = tp_df[tp_df["method_name"] == method]
+        if method_df.empty:
             continue
 
-        ft_c = group["_ft_correct"]
-        mt_c = group["_match_correct"]
+        for model in MODEL_ORDER:
+            group = method_df[method_df["model_name"] == model]
+            if group.empty:
+                continue
 
-        rows_out.append(
-            {
-                "model": model,
-                "n_total": len(group),
-                "n_ft_missing": int((~group["free_text_response"].notna()).sum()),
-                "ft_correct_match_correct": int((ft_c & mt_c).sum()),
-                "ft_correct_match_wrong": int((ft_c & ~mt_c).sum()),
-                "ft_wrong_match_correct": int((~ft_c & mt_c).sum()),
-                "ft_wrong_match_wrong": int((~ft_c & ~mt_c).sum()),
-            }
-        )
+            ft_c = group["_ft_correct"]
+            mt_c = group["_match_correct"]
+
+            rows_out.append(
+                {
+                    "method": method,
+                    "model": model,
+                    "n_total": len(group),
+                    "n_ft_missing": int((~group["free_text_response"].notna()).sum()),
+                    "ft_correct_match_correct": int((ft_c & mt_c).sum()),
+                    "ft_correct_match_wrong": int((ft_c & ~mt_c).sum()),
+                    "ft_wrong_match_correct": int((~ft_c & mt_c).sum()),
+                    "ft_wrong_match_wrong": int((~ft_c & ~mt_c).sum()),
+                }
+            )
 
     result = pd.DataFrame(rows_out)
     if not result.empty:
-        result["model"] = pd.Categorical(result["model"], categories=MODEL_ORDER, ordered=True)
-        result = result.sort_values("model").reset_index(drop=True)
+        result = _apply_display_order(result)
+        result = result.sort_values(["method", "model"]).reset_index(drop=True)
     return result
 
 
@@ -807,6 +830,18 @@ def main() -> None:
         default=None,
         help="Filter to a single benchmark (e.g. mmlu, arc_challenge). "
              "Required when a run contains multiple benchmarks.",
+    )
+    parser.add_argument(
+        "--baseline-dir",
+        default=None,
+        help=(
+            "Folder (relative to runs_dir, or absolute) containing baseline rows to "
+            "supplement this run. Use when evaluating ablation folders that have no "
+            "baseline rows of their own — overlap, choice-shift, and other baseline-"
+            "dependent analyses will then have a reference to compare against. "
+            "Only the baseline method rows from this folder are loaded; all other "
+            "methods in that folder are ignored."
+        ),
     )
     parser.add_argument(
         "--apply-fallback",
@@ -849,6 +884,28 @@ def main() -> None:
                 f"[eval] WARNING: no 'benchmark' column in data; "
                 "--benchmark filter has no effect (older run format)"
             )
+
+    if args.baseline_dir is not None:
+        bl_path = Path(args.baseline_dir)
+        if not bl_path.is_absolute():
+            bl_path = runs_dir / bl_path
+        if not bl_path.exists():
+            print(f"[eval] ERROR: --baseline-dir not found: {bl_path}")
+            sys.exit(1)
+        existing_baseline = df[df["method_name"] == BASELINE_METHOD]
+        if not existing_baseline.empty:
+            print(
+                f"[eval] WARNING: run folder already contains baseline rows "
+                f"({len(existing_baseline)} rows); --baseline-dir ignored."
+            )
+        else:
+            print(f"[eval] Loading baseline rows from {bl_path}...")
+            bl_df = load_run(bl_path)
+            if args.benchmark and "benchmark" in bl_df.columns:
+                bl_df = bl_df[bl_df["benchmark"] == args.benchmark]
+            bl_df = bl_df[bl_df["method_name"] == BASELINE_METHOD].reset_index(drop=True)
+            print(f"[eval]   {len(bl_df)} baseline rows added")
+            df = pd.concat([df, bl_df], ignore_index=True)
 
     print("[eval] Re-parsing responses with current parser...")
     df = reparse_run(df)
