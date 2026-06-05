@@ -670,6 +670,10 @@ def main() -> None:
     else:
         reports_dir = REPORTS_DIR
 
+    _BENCHMARK_ALIASES = {"arc": "arc_challenge"}
+    if args.benchmark:
+        args.benchmark = _BENCHMARK_ALIASES.get(args.benchmark, args.benchmark)
+
     run_report_dir = reports_dir / args.run_id
 
     # Fix 6: cross-benchmark mode
