@@ -15,6 +15,7 @@ PRIDE_METHOD = "pride"
 TEXT_EXTRACTION_METHOD = "text_extraction"
 SEMANTIC_MATCH_METHOD = "twostage_semantic_match"
 SEMANTIC_MATCH_V2_METHOD = "twostage_semantic_match_v2"
+INDEPENDENT_HYPOTHESIS_METHOD = "independent_hypothesis"
 
 ALL_METHODS = [
     BASELINE_METHOD,
@@ -35,6 +36,7 @@ EXTERNALLY_SCORED_METHODS: frozenset[str] = frozenset({
     TEXT_EXTRACTION_METHOD,
     SEMANTIC_MATCH_METHOD,
     SEMANTIC_MATCH_V2_METHOD,
+    INDEPENDENT_HYPOTHESIS_METHOD,
 })
 
 # Track A: robustness / accuracy ------------------------

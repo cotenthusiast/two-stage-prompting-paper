@@ -21,6 +21,7 @@ METHOD_ORDER = [
     "text_extraction",
     "twostage_semantic_match",
     "twostage_semantic_match_v2",
+    "independent_hypothesis",
 ]
 
 MODEL_ORDER = [
