@@ -65,6 +65,29 @@ class TestParseConfidenceScore:
         assert ok is True
 
 
+class TestIsMissingOption:
+    """Tests for IndependentHypothesisRunner._is_missing_option."""
+
+    def test_nan_float_is_missing(self):
+        assert IndependentHypothesisRunner._is_missing_option(float("nan")) is True
+
+    def test_none_is_missing(self):
+        assert IndependentHypothesisRunner._is_missing_option(None) is True
+
+    def test_empty_string_is_missing(self):
+        assert IndependentHypothesisRunner._is_missing_option("") is True
+
+    def test_whitespace_only_string_is_missing(self):
+        assert IndependentHypothesisRunner._is_missing_option("   ") is True
+
+    def test_real_text_is_not_missing(self):
+        assert IndependentHypothesisRunner._is_missing_option("HTTPS") is False
+
+    def test_zero_is_not_missing(self):
+        """A real option whose text is the string '0' is not the same as NaN."""
+        assert IndependentHypothesisRunner._is_missing_option("0") is False
+
+
 class TestArgmaxWithRandomTiebreak:
     """Tests for IndependentHypothesisRunner._argmax_with_random_tiebreak."""
 
@@ -212,3 +235,41 @@ class TestIndependentHypothesisRunnerRunOne:
         result = await _make_runner(client).run_one(runner_question_row, sample_index=0)
 
         assert result["method_name"] == "independent_hypothesis"
+
+
+class TestMissingFourthOption:
+    """ExperimentRunner._build_options never drops a NaN/empty choice_d (some
+    ARC-Challenge questions have only 3 real options) — the runner must filter
+    it out itself rather than sending a 4th call about a nonsense hypothesis.
+    """
+
+    @pytest.mark.asyncio
+    async def test_nan_choice_d_makes_only_three_calls(self, runner_question_row, runner_metadata):
+        row = dict(runner_question_row, choice_d=float("nan"))
+        responses = [_make_success_response(_score_text(s), runner_metadata) for s in [10, 20, 90]]
+        client = MockClient(responses=responses)
+        result = await _make_runner(client).run_one(row, sample_index=0)
+
+        assert len(client.requests_received) == 3
+        assert result["final_prediction"] == "C"
+        assert "option_d_score" not in result
+
+    @pytest.mark.asyncio
+    async def test_nan_choice_d_never_sent_as_a_hypothesis(self, runner_question_row, runner_metadata):
+        row = dict(runner_question_row, choice_d=float("nan"))
+        responses = [_make_success_response(_score_text(50), runner_metadata) for _ in range(3)]
+        client = MockClient(responses=responses)
+        await _make_runner(client).run_one(row, sample_index=0)
+
+        for req in client.requests_received:
+            assert "nan" not in req.payload.lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_string_choice_d_also_filtered(self, runner_question_row, runner_metadata):
+        row = dict(runner_question_row, choice_d="   ")
+        responses = [_make_success_response(_score_text(s), runner_metadata) for s in [10, 20, 90]]
+        client = MockClient(responses=responses)
+        result = await _make_runner(client).run_one(row, sample_index=0)
+
+        assert len(client.requests_received) == 3
+        assert "option_d_score" not in result

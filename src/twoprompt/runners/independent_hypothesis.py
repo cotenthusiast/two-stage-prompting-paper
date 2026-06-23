@@ -1,6 +1,7 @@
 # src/twoprompt/runners/independent_hypothesis.py
 
 import asyncio
+import math
 import random
 import re
 from typing import Any
@@ -20,16 +21,20 @@ _SCORE_PATTERN = re.compile(r"<score>\s*(-?\d+(?:\.\d+)?)\s*</score>", re.IGNORE
 class IndependentHypothesisRunner(ExperimentRunner):
     """Runner for the independent-hypothesis condition.
 
-    For each question, each of the four options is evaluated independently:
-    the model receives the question and exactly one candidate option framed
-    as a hypothesis, and returns a 0-100 confidence score for that hypothesis
-    alone. Four independent, parallel API calls are made per question (no
-    option ever appears alongside another in the same prompt). The final
-    prediction is the option with the highest confidence score; ties are
-    broken randomly using a seed derived from the run seed and question ID
-    for reproducibility regardless of async completion order.
+    Every real option for a question (4, or 3 for the rare ARC-Challenge
+    question missing a D choice — ExperimentRunner._build_options never
+    drops it, so this runner filters NaN/empty option text itself) is
+    evaluated independently: the model receives the question and exactly
+    one candidate option framed as a hypothesis, and returns a 0-100
+    confidence score for that hypothesis alone. One parallel API call per
+    real option (no option ever appears alongside another in the same
+    prompt, and no call is ever made for a missing option). The final
+    prediction is the option with the highest confidence score among the
+    real options; ties are broken randomly using a seed derived from the
+    run seed and question ID for reproducibility regardless of async
+    completion order.
 
-    All four raw responses and scores are preserved in the result row so
+    All raw responses and scores are preserved in the result row so
     aggregation (e.g. a different tie-break or parse rule) can be redone
     post-hoc without rerunning inference.
     """
@@ -47,6 +52,10 @@ class IndependentHypothesisRunner(ExperimentRunner):
             the final prediction.
         """
         options = self._build_options(question_row)
+        letters = [
+            letter for letter in _LETTERS
+            if not self._is_missing_option(options[letter])
+        ]
 
         prompts = [
             build_independent_hypothesis_prompt(
@@ -54,7 +63,7 @@ class IndependentHypothesisRunner(ExperimentRunner):
                 question=question_row["question_text"],
                 option_text=options[letter],
             )
-            for letter in _LETTERS
+            for letter in letters
         ]
         requests = [
             self._build_model_request(question_row, prompt, sample_index)
@@ -67,7 +76,7 @@ class IndependentHypothesisRunner(ExperimentRunner):
         scores: dict[str, float] = {}
         parse_ok: dict[str, bool] = {}
         n_failures = 0
-        for letter, response in zip(_LETTERS, responses):
+        for letter, response in zip(letters, responses):
             if response.is_success():
                 score, ok = self._parse_confidence_score(response.raw_text)
             else:
@@ -80,7 +89,7 @@ class IndependentHypothesisRunner(ExperimentRunner):
         score_result = None
         final_prediction = None
 
-        if n_failures < len(_LETTERS):
+        if n_failures < len(letters):
             final_prediction = self._argmax_with_random_tiebreak(
                 scores, self.seed, question_row["question_id"]
             )
@@ -102,7 +111,7 @@ class IndependentHypothesisRunner(ExperimentRunner):
             score_result=score_result,
         )
 
-        for letter, response in zip(_LETTERS, responses):
+        for letter, response in zip(letters, responses):
             suffix = letter.lower()
             result[f"option_{suffix}_raw_text"] = response.raw_text
             result[f"option_{suffix}_model_status"] = response.status
@@ -112,6 +121,24 @@ class IndependentHypothesisRunner(ExperimentRunner):
         result["n_model_failures"] = n_failures
 
         return result
+
+    @staticmethod
+    def _is_missing_option(value: Any) -> bool:
+        """True if an option's text is NaN (CSV round-trip of an absent
+        choice, e.g. ARC-Challenge questions with no real D option) or an
+        empty/whitespace-only string.
+
+        ExperimentRunner._build_options (shared by every runner) never
+        drops a missing option, so this check happens here rather than
+        upstream — changing the shared base would affect every method.
+        """
+        if value is None:
+            return True
+        if isinstance(value, float) and math.isnan(value):
+            return True
+        if isinstance(value, str) and value.strip() == "":
+            return True
+        return False
 
     @staticmethod
     def _parse_confidence_score(raw_text: str | None) -> tuple[float, bool]:
