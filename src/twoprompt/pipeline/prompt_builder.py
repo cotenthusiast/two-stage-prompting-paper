@@ -3,7 +3,13 @@
 from pathlib import Path
 
 
-_TEMPLATE_NAMES = ("direct_mcq", "free_text", "option_matching", "text_extraction")
+_TEMPLATE_NAMES = (
+    "direct_mcq",
+    "free_text",
+    "option_matching",
+    "text_extraction",
+    "independent_hypothesis",
+)
 
 
 def load_prompt_templates(version: str, prompts_dir: Path) -> dict[str, str]:
@@ -121,6 +127,27 @@ def build_text_extraction_prompt(
         option_b=option_b,
         option_c=option_c,
         option_d=option_d,
+    )
+
+
+def build_independent_hypothesis_prompt(
+    template: str,
+    question: str,
+    option_text: str,
+) -> str:
+    """Format the independent-hypothesis template for a single candidate option.
+
+    Args:
+        template: Raw template string from load_prompt_templates.
+        question: Question stem to present to the model.
+        option_text: Text of the single candidate option framed as a hypothesis.
+
+    Returns:
+        Fully formatted prompt string.
+    """
+    return template.format(
+        question=question,
+        option_text=option_text,
     )
 
 

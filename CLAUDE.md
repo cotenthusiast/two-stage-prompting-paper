@@ -9,7 +9,7 @@ Research codebase for measuring positional bias in LLM multiple-choice answering
 - Accuracy: tertiary/supporting
 - Main empirical claim: two-stage prompting does not reliably mitigate MCQ positional bias and reduces end-to-end accuracy across evaluated models/benchmarks.
 
-**Methods:** Direct MCQ baseline, two-stage prompting (v1/v2/v3 prompt ablations), text extraction, semantic match (v1/v2), cyclic permutation, PriDe logprob debiasing.
+**Methods:** Direct MCQ baseline, two-stage prompting (v1/v2/v3 prompt ablations), text extraction, semantic match (v1/v2), cyclic permutation, PriDe logprob debiasing, independent hypothesis evaluation.
 
 **Benchmarks:** MMLU, ARC-Challenge.
 
@@ -204,6 +204,7 @@ data/processed/    data/splits/
 | `two_prompt_cyclic` | `TwoStagePermutationRunner` | Free-text answer plus cyclic option matching (not in current paper runs) |
 | `pride` | `PriDeRunner` | Logprob-based positional-prior debiasing |
 | `text_extraction` | `TextExtractionRunner` | Stage 1 free-text, Stage 2 deterministic text matching (no second LLM call) |
+| `independent_hypothesis` | `IndependentHypothesisRunner` | Four independent calls per question, one per option framed as a hypothesis; argmax of regex-parsed confidence scores, seeded random tie-break |
 | `twostage_semantic_match` | (post-hoc) | Derived from two_prompt Stage 1 outputs via sentence-transformer cosine similarity |
 | `twostage_semantic_match_v2` | (post-hoc) | Same derivation from two_prompt_v2 Stage 1 outputs |
 

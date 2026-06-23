@@ -32,6 +32,7 @@ from twoprompt.infra.checkpoint import CheckpointManager
 from twoprompt.io.readers import read_normalized_questions, read_split_ids
 from twoprompt.io.writers import write_run_results
 from twoprompt.runners.direct_mcq import DirectMCQRunner
+from twoprompt.runners.independent_hypothesis import IndependentHypothesisRunner
 from twoprompt.runners.permutation import PermutationRunner
 from twoprompt.runners.pride import PriDeRunner
 from twoprompt.runners.text_extraction import TextExtractionRunner
@@ -57,6 +58,7 @@ _METHOD_TO_RUNNER = {
     "cyclic": PermutationRunner,
     "pride": PriDeRunner,
     "text_extraction": TextExtractionRunner,
+    "independent_hypothesis": IndependentHypothesisRunner,
 }
 
 # API calls per question for each method (used for preflight estimates).
@@ -67,6 +69,7 @@ _CALLS_PER_QUESTION = {
     "cyclic": 4,           # 4 cyclic permutations
     "pride": 1,
     "text_extraction": 1,  # 1 call; matching is deterministic post-processing
+    "independent_hypothesis": 4,  # 1 independent call per option
 }
 
 # Approximate avg tokens per API call (very rough; for cost estimates only).
